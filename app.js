@@ -682,9 +682,12 @@
     gruppoRef.child('letti/' + profilo.id + '/' + chatAperta.chatId).set(TS);
   }
 
+  var ultimoTesto = { t: '', c: '', alle: 0 };
   function invia(testo) {
     testo = String(testo || '').trim().slice(0, 300);
     if (!testo || !chatAperta || !gruppoRef) return;
+    if (ultimoTesto.t === testo && ultimoTesto.c === chatAperta.chatId && Date.now() - ultimoTesto.alle < 1000) return;
+    ultimoTesto = { t: testo, c: chatAperta.chatId, alle: Date.now() };
     var m = { da: profilo.id, testo: testo, ts: TS };
     gruppoRef.child('chat/' + chatAperta.chatId).push(m);
     gruppoRef.child('ultimi/' + chatAperta.chatId).set(m);
@@ -727,8 +730,17 @@
     }).catch(function () { cb(null); });
   }
 
+  var ultimoInvio = { firma: '', alle: 0 };
+  function giaInviato(firma) {
+    var adesso = Date.now();
+    if (firma === ultimoInvio.firma && adesso - ultimoInvio.alle < 4000) return true;
+    ultimoInvio = { firma: firma, alle: adesso };
+    return false;
+  }
+
   function inviaMedia(tipo, dati, durata) {
     if (!chatAperta || !gruppoRef || !dati) return;
+    if (giaInviato(tipo + ':' + chatAperta.chatId + ':' + dati.length + ':' + dati.slice(-64))) return;
     var cid = chatAperta.chatId;
     var ref = gruppoRef.child('chat/' + cid).push();
     var key = ref.key;
@@ -810,7 +822,14 @@
       var b = document.createElement('button');
       b.className = 'nav' + (a.primario ? ' primario' : '');
       b.textContent = a.testo;
-      b.onclick = a.fai;
+      // un solo clic per pulsante: il tasto OK del telecomando a volte arriva doppio
+      var usato = false;
+      b.onclick = function (e) {
+        if (usato) return;
+        usato = true;
+        b.disabled = true;
+        a.fai(e);
+      };
       box.appendChild(b);
     });
     setTimeout(function () { metti(box.querySelector('button')); }, 30);
@@ -834,6 +853,7 @@
   }
 
   function chiudiPannello() {
+    pan.chiusoAlle = Date.now();
     clearInterval(pan.timer); clearInterval(pan.conto);
     pan.timer = pan.conto = null;
     if (pan.recorder && pan.recorder.state !== 'inactive') {
@@ -872,8 +892,10 @@
   }
 
   // ----- FOTO -----
+  function rimbalzo() { return pan.chiusoAlle && Date.now() - pan.chiusoAlle < 600; }
+
   function apriFoto() {
-    if (!chatAperta) return;
+    if (!chatAperta || rimbalzo()) return;
     apriPannello('foto', '📷 Foto per ' + nomeInterlocutore());
     impostaSchermo('video');
     statoPan('Accensione webcam…');
@@ -948,7 +970,7 @@
   }
 
   function apriVocale() {
-    if (!chatAperta) return;
+    if (!chatAperta || rimbalzo()) return;
     apriPannello('vocale', '🎙️ Vocale per ' + nomeInterlocutore());
     impostaSchermo('mic');
     if (tipoAudio() === null) {
