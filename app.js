@@ -15,7 +15,7 @@
 
   var profilo = leggiProfilo();
   var db = null, gruppoRef = null, mioRef = null, refMessaggi = null;
-  var utenti = {}, ultimi = {}, letti = {};
+  var utenti = {}, ultimi = {}, letti = {}, svuotate = {};
   var primoCaricamento = true;
   var chatAperta = null;
   var schermata = 's-avvio';
@@ -303,6 +303,7 @@
     });
 
     $('btn-indietro').onclick = chiudiChat;
+    $('btn-svuota').onclick = apriSvuota;
     $('rapidi').addEventListener('click', clicInvio);
     $('btn-invia').onclick = inviaCampo;
     $('btn-foto').onclick = apriFoto;
@@ -459,7 +460,7 @@
       mioRef = null;
     }
     gruppoRef = null;
-    utenti = {}; ultimi = {}; letti = {};
+    utenti = {}; ultimi = {}; letti = {}; svuotate = {};
     primoCaricamento = true;
     chatAperta = null;
     pulizieFatte = {};
@@ -499,6 +500,13 @@
       disegnaContatti();
     });
 
+    // chat svuotate "solo per me": si nascondono i messaggi fino a quel momento
+    var refSvuotate = g.child('svuotate/' + profilo.id);
+    var suSvuotate = refSvuotate.on('value', function (s) {
+      svuotate = s.val() || {};
+      disegnaContatti();
+    });
+
     var refLetti = g.child('letti/' + profilo.id);
     var suLetti = refLetti.on('value', function (s) {
       letti = s.val() || {};
@@ -510,6 +518,7 @@
       refUtenti.off('value', suUtenti);
       refUltimi.off('value', suUltimi);
       refLetti.off('value', suLetti);
+      refSvuotate.off('value', suSvuotate);
     });
 
     estensioni.entra.forEach(function (f) { f(); });
@@ -556,6 +565,7 @@
       var u = utenti[id] || {};
       var cid = chatIdDi(profilo.id, id);
       var ul = ultimi[cid];
+      if (ul && svuotate[cid] && ul.ts <= svuotate[cid]) ul = null;
       var nuovo = ul && ul.da !== profilo.id && (!letti[cid] || letti[cid] < ul.ts);
       var anteprima = ul ? (ul.da === profilo.id ? 'Tu: ' : '') + ul.testo : 'Nessun messaggio';
       return '<button class="nav contatto' + (u.online ? ' online' : '') + '" data-id="' + esc(id) + '">' +
@@ -581,7 +591,7 @@
     var cid = chatIdDi(profilo.id, id);
     chatAperta = { id: id, chatId: cid };
     ultimoGiorno = null;
-    $('messaggi').innerHTML = '<p class="vuoto" id="chat-vuota">Nessun messaggio. Scegli un messaggio rapido qui sotto per iniziare.</p>';
+    $('messaggi').innerHTML = messaggioChatVuota();
     $('in-testo').value = '';
     aggiornaTestataChat();
 
@@ -590,9 +600,80 @@
       aggiungiMessaggio(s.val(), s.key);
       segnaLetto();
     });
+    refMessaggi.on('child_removed', function (s) { rimuoviBolla(s.key); });
     pulisciMediaVecchi(cid);
     segnaLetto();
     mostra('s-chat', $('rapidi').querySelector('button'));
+  }
+
+  function messaggioChatVuota() {
+    return '<p class="vuoto" id="chat-vuota">Nessun messaggio. Scegli un messaggio rapido qui sotto per iniziare.</p>';
+  }
+
+  // Un messaggio è stato cancellato (chat svuotata per entrambi dall'altra TV o da questa)
+  function rimuoviBolla(key) {
+    var box = $('messaggi');
+    var b = box.querySelector('[data-key="' + key + '"]');
+    if (b) b.remove();
+    if (!box.querySelector('.msg')) {
+      box.innerHTML = messaggioChatVuota();
+      ultimoGiorno = null;
+    }
+  }
+
+  function ricaricaChat() {
+    if (!chatAperta) return;
+    var id = chatAperta.id;
+    fermaVocale();
+    if (refMessaggi) { refMessaggi.off(); refMessaggi = null; }
+    chatAperta = null;
+    apriChat(id);
+  }
+
+  // =============== SVUOTA CHAT ===============
+  function apriSvuota() {
+    if (!chatAperta) return;
+    var nome = nomeInterlocutore();
+    apriPannello('svuota', '🗑️ Svuota la chat con ' + nome);
+    statoPan('Solo per me: i messaggi spariscono da questa TV. Per entrambi: messaggi, foto e vocali vengono cancellati anche per ' + nome + '.');
+    azioni([
+      { testo: '🙈 Solo per me', primario: true, fai: svuotaPerMe },
+      { testo: '🗑️ Per entrambi', fai: confermaPerEntrambi },
+      { testo: 'Annulla', fai: chiudiPannello }
+    ]);
+  }
+
+  function confermaPerEntrambi() {
+    statoPan('Sicuro? La chat verrà cancellata anche per ' + nomeInterlocutore() + '. Non si può annullare.');
+    azioni([
+      { testo: 'Annulla', fai: chiudiPannello },
+      { testo: 'Sì, cancella per entrambi', fai: svuotaPerEntrambi }
+    ]);
+  }
+
+  function svuotaPerMe() {
+    if (!chatAperta || !gruppoRef) return;
+    var cid = chatAperta.chatId;
+    gruppoRef.child('svuotate/' + profilo.id + '/' + cid).set(TS);
+    svuotate[cid] = Date.now() + 1000; // effetto immediato, poi arriva l'orario del server
+    chiudiPannello();
+    ricaricaChat();
+    toast('Chat svuotata su questa TV');
+  }
+
+  function svuotaPerEntrambi() {
+    if (!chatAperta || !gruppoRef) return;
+    var cid = chatAperta.chatId;
+    var canc = {};
+    canc['chat/' + cid] = null;
+    canc['media/' + cid] = null;
+    canc['ultimi/' + cid] = null;
+    gruppoRef.update(canc).then(function () {
+      toast('Chat svuotata per entrambi');
+    }).catch(function (e) {
+      toast('Cancellazione non riuscita: ' + (e && e.message ? e.message : e));
+    });
+    chiudiPannello();
   }
 
   function chiudiChat() {
@@ -629,6 +710,7 @@
     if (vuota) vuota.remove();
 
     var ts = typeof m.ts === 'number' ? m.ts : Date.now();
+    if (svuotate[cid] && ts <= svuotate[cid]) return;
     var giorno = etichettaGiorno(ts);
     if (giorno !== ultimoGiorno) {
       ultimoGiorno = giorno;
@@ -639,6 +721,7 @@
     }
     var div = document.createElement('div');
     div.className = 'msg ' + (m.da === profilo.id ? 'mio' : 'altro');
+    if (key) div.setAttribute('data-key', key);
 
     if (tipo === 'foto') {
       div.className += ' media';
@@ -841,6 +924,7 @@
     if (!pannelloAperto()) pan.ritorno = document.activeElement;
     pan.modo = modo;
     $('pannello').classList.toggle('visore', modo === 'visore');
+    $('pannello').classList.toggle('solo-testo', modo === 'svuota');
     $('pan-titolo').textContent = titolo;
     $('pan-conto').textContent = '';
     statoPan('');

@@ -453,3 +453,7 @@ html.desktop .contatto:hover { box-shadow: 0 0 0 .15rem rgba(255, 201, 74, .5); 
 html.desktop .suggerimento { display: none !important; }
 html.desktop .msg { max-width: 55%; }
 html.desktop .riga-scorrevole { scrollbar-width: thin; }
+
+/* ================= 1.8: SVUOTA CHAT ================= */
+.pannello.solo-testo .pan-schermo { display: none; }
+.pannello.solo-testo .pan-stato { max-width: 40rem; margin: .6rem auto 1.2rem; color: var(--testo); line-height: 1.45; }
