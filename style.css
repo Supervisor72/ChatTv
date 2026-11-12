@@ -1,0 +1,455 @@
+/* Chat TV: interfaccia "da divano", leggibile a 3 metri */
+:root {
+  --notte: #161A33;
+  --notte-2: #222A52;
+  --notte-3: #2E376A;
+  --lampada: #FFC94A;
+  --carta: #F6F1E4;
+  --mare: #2F9C8F;
+  --testo: #EEECF7;
+  --tenue: #A3A7CB;
+  --rosso: #E8705F;
+  --verde: #5FD39A;
+}
+
+* { box-sizing: border-box; }
+
+/* 1rem = 1/60 della larghezza: stesse proporzioni su qualsiasi TV */
+html { font-size: calc(100vw / 60); height: 100%; }
+
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 85% -10%, #2B3270 0%, var(--notte) 55%) fixed;
+  color: var(--testo);
+  font-family: "Nunito", "Roboto", system-ui, sans-serif;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { height: 100%; padding: 4vh 5vw; } /* margine di sicurezza per l'overscan delle TV */
+
+.schermata { display: none; height: 100%; }
+.schermata.attiva { display: block; overflow-y: auto; overflow-x: hidden; padding: .4rem; margin: -.4rem; }
+.schermata.attiva::-webkit-scrollbar { display: none; }
+.schermata.centrata.attiva {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+}
+
+h1 { font-size: 2.4rem; font-weight: 800; margin: 0 0 .4rem; line-height: 1.15; }
+h2 { font-size: 1.5rem; font-weight: 700; margin: 1.2rem 0 1rem; }
+.sotto { color: var(--tenue); font-size: 1.15rem; margin: 0 0 1.6rem; max-width: 42rem; line-height: 1.45; }
+.logo { font-size: 4.5rem; margin-bottom: .6rem; }
+
+/* ---------- elementi navigabili col telecomando ---------- */
+button {
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--testo);
+  background: var(--notte-2);
+  border: 0;
+  border-radius: .9rem;
+  padding: .7rem 1.3rem;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+}
+button.primario { background: var(--lampada); color: var(--notte); }
+button.pericolo { color: var(--rosso); }
+
+input {
+  font: inherit;
+  font-size: 1.15rem;
+  color: var(--notte);
+  background: var(--carta);
+  border: 0;
+  border-radius: .9rem;
+  padding: .75rem 1.1rem;
+  width: 100%;
+  transition: box-shadow .12s ease;
+}
+input::placeholder { color: #8C8A86; }
+input.maiuscolo { text-transform: uppercase; }
+
+/* Il "bagliore della lampada": si vede sempre dove si trova il cursore */
+.nav:focus { outline: none; }
+.nav:focus-visible, .nav:focus {
+  box-shadow: 0 0 0 .22rem var(--lampada), 0 0 1.8rem rgba(255, 201, 74, .45);
+}
+button.nav:focus { transform: scale(1.06); }
+
+/* ---------- testata ---------- */
+.testata { display: flex; align-items: center; justify-content: space-between; gap: 1.2rem; }
+.persona { display: flex; align-items: center; gap: .9rem; }
+.avatar { font-size: 2.4rem; line-height: 1; }
+.avatar.grande { font-size: 3.6rem; }
+.nome { font-size: 1.35rem; font-weight: 800; }
+.stato { font-size: .95rem; color: var(--tenue); }
+.titolo-testata { margin: 0; }
+
+/* ---------- setup ---------- */
+.setup-campi { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 1.4rem; max-width: 58rem; margin-bottom: 1.4rem; }
+
+/* menu a tendina delle stanze */
+.tendina { position: relative; }
+button.campo-tendina {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  background: var(--carta); color: var(--notte);
+  font-weight: 700; font-size: 1.15rem; text-align: left;
+  padding: .75rem 1.1rem;
+}
+button.campo-tendina.nav:focus { transform: none; }
+.campo-tendina.vuota #stanza-testo { color: #8C8A86; font-weight: 500; }
+.campo-tendina .freccia { font-size: 1rem; color: var(--notte); }
+.elenco-stanze {
+  display: none;
+  position: absolute; top: calc(100% + .6rem); left: 0; z-index: 20;
+  grid-template-columns: repeat(2, 12rem); gap: .6rem;
+  padding: .8rem;
+  background: var(--notte-3);
+  border-radius: 1.1rem;
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, .55);
+}
+.elenco-stanze.aperta { display: grid; }
+.elenco-stanze button { text-align: left; background: var(--notte-2); }
+.elenco-stanze button.scelta { background: var(--lampada); color: var(--notte); }
+.campo label, .etichetta { display: block; font-size: 1rem; color: var(--tenue); margin-bottom: .45rem; }
+.avatar-griglia { display: grid; grid-template-columns: repeat(auto-fill, 4.4rem); gap: .8rem; margin-bottom: 1.6rem; max-width: 42rem; }
+.avatar-griglia button { font-size: 2.2rem; padding: .45rem 0; background: var(--notte-2); }
+.avatar-griglia button.scelto { background: var(--notte-3); box-shadow: inset 0 0 0 .18rem var(--carta); }
+.riga-azioni { display: flex; align-items: center; gap: 1.4rem; }
+.msg-errore { color: var(--rosso); font-size: 1.05rem; }
+
+/* ---------- contatti ---------- */
+.contatti { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: 1.4rem; }
+.contatto {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: .3rem; padding: 1.3rem 1rem 1.1rem; min-height: 12rem;
+  background: var(--notte-2);
+  border-radius: 1.4rem;
+}
+.c-nome { font-size: 1.3rem; font-weight: 800; margin-top: .3rem; }
+.c-stato { font-size: .9rem; color: var(--tenue); font-weight: 500; }
+.contatto.online .c-stato { color: var(--verde); }
+.contatto.online .c-stato::before {
+  content: ""; display: inline-block; width: .55rem; height: .55rem; border-radius: 50%;
+  background: var(--verde); margin-right: .35rem; vertical-align: middle;
+}
+.c-anteprima {
+  font-size: .95rem; color: var(--tenue); font-weight: 500;
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.badge {
+  position: absolute; top: .8rem; right: .8rem;
+  background: var(--rosso); color: #fff; font-size: .85rem; font-weight: 800;
+  padding: .2rem .65rem; border-radius: 1rem;
+}
+.vuoto { color: var(--tenue); font-size: 1.15rem; max-width: 40rem; }
+
+/* ---------- chat ---------- */
+#s-chat.attiva { display: flex; flex-direction: column; gap: .6rem; overflow: hidden; position: relative; }
+.messaggi {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  scroll-behavior: auto;
+  background: rgba(0, 0, 0, .18);
+  border-radius: 1.2rem;
+  padding: 1.2rem 1.4rem;
+  display: flex; flex-direction: column; gap: .6rem;
+}
+.messaggi:focus { box-shadow: inset 0 0 0 .18rem var(--lampada); }
+.giorno { align-self: center; font-size: .85rem; color: var(--tenue); padding: .2rem .8rem; background: var(--notte-2); border-radius: 1rem; }
+.msg { max-width: 62%; padding: .65rem 1rem .5rem; border-radius: 1.1rem; font-size: 1.2rem; line-height: 1.35; word-wrap: break-word; }
+.msg .ora { display: block; font-size: .75rem; opacity: .7; text-align: right; margin-top: .15rem; }
+.msg.mio { align-self: flex-end; background: var(--mare); color: #fff; border-bottom-right-radius: .3rem; }
+.msg.altro { align-self: flex-start; background: var(--carta); color: var(--notte); border-bottom-left-radius: .3rem; }
+.msg.solo-emoji { background: transparent; font-size: 3rem; padding: 0; }
+.msg.solo-emoji .ora { color: var(--tenue); }
+.messaggi .vuoto { margin: auto; text-align: center; }
+
+.riga-scorrevole, .riga-emoji {
+  display: flex; gap: .8rem;
+  overflow-x: auto; overflow-y: hidden;
+  padding: .45rem .4rem;
+  scrollbar-width: none;
+}
+.riga-scorrevole::-webkit-scrollbar, .riga-emoji::-webkit-scrollbar { display: none; }
+.riga-scorrevole button, .riga-emoji button { flex-shrink: 0; white-space: nowrap; }
+.riga-emoji button { font-size: 1.7rem; padding: .3rem .8rem; }
+.scrivi { display: flex; gap: .9rem; padding: 0 .4rem .4rem; }
+.scrivi button { flex-shrink: 0; }
+
+/* ---------- impostazioni ---------- */
+.scheda-info { display: flex; align-items: center; gap: 1.4rem; margin: 2rem 0; }
+.lista-azioni { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; }
+
+/* ---------- notifica ---------- */
+.toast {
+  position: fixed; top: 4vh; right: 5vw;
+  max-width: 28rem;
+  background: var(--carta); color: var(--notte);
+  border-left: .45rem solid var(--lampada);
+  border-radius: .9rem;
+  padding: .9rem 1.2rem;
+  font-size: 1.1rem; font-weight: 700;
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, .4);
+  opacity: 0; transform: translateY(-1rem);
+  transition: opacity .25s ease, transform .25s ease;
+  pointer-events: none;
+}
+.toast.visibile { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+/* ---------- foto e vocali nei messaggi ---------- */
+.suggerimento {
+  display: none;
+  position: absolute; top: 5.4rem; right: 1.6rem; z-index: 2; margin: 0;
+  background: var(--lampada); color: var(--notte);
+  font-size: .85rem; font-weight: 700; padding: .25rem .8rem; border-radius: 1rem;
+}
+#messaggi:focus + .suggerimento { display: block; }
+.msg.media { padding: .4rem .4rem .35rem; }
+.msg.media .ora { padding-right: .4rem; }
+button.btn-foto {
+  display: block; padding: 0; background: transparent;
+  border-radius: .8rem; overflow: hidden;
+}
+button.btn-foto img { display: block; max-width: 22rem; max-height: 13rem; border-radius: .8rem; }
+button.btn-vocale {
+  background: rgba(0, 0, 0, .15); color: inherit;
+  font-size: 1.1rem; padding: .55rem 1.1rem; min-width: 12rem; text-align: left;
+}
+.msg.altro button.btn-vocale { background: rgba(22, 26, 51, .1); }
+.caricamento { display: block; padding: .8rem 1rem; font-size: 1rem; font-weight: 500; }
+.msg.altro .caricamento { color: var(--notte); }
+.msg.media button.nav:focus { transform: scale(1.03); }
+
+/* ---------- pannello foto / vocale ---------- */
+.pannello {
+  display: none;
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(10, 12, 28, .9);
+  align-items: center; justify-content: center;
+}
+.pannello.aperto { display: flex; }
+.pannello-scheda { text-align: center; }
+.pan-titolo { margin: 0 0 .8rem; font-size: 1.4rem; }
+.pan-schermo {
+  position: relative;
+  height: 60vh; aspect-ratio: 16 / 9; max-width: 90vw; margin: 0 auto;
+  background: #000; border-radius: 1.2rem; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.pan-schermo video, .pan-schermo img { width: 100%; height: 100%; object-fit: contain; display: none; }
+.pan-schermo video { transform: scaleX(-1); }
+.pan-schermo.mostra-video video, .pan-schermo.mostra-foto img { display: block; }
+.pan-mic { display: none; font-size: 7rem; }
+.pan-schermo.mostra-mic .pan-mic { display: block; }
+.pan-conto {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 9rem; font-weight: 800; color: var(--lampada);
+  text-shadow: 0 0 2rem rgba(0, 0, 0, .8);
+  pointer-events: none;
+}
+.pan-rec {
+  display: none;
+  position: absolute; top: 1rem; left: 1rem;
+  background: rgba(0, 0, 0, .55); color: #fff;
+  font-size: 1.2rem; font-weight: 800; padding: .3rem .9rem; border-radius: 1rem;
+  align-items: center; gap: .5rem;
+}
+.pan-schermo.registra .pan-rec { display: flex; }
+.pan-rec .punto { width: .8rem; height: .8rem; border-radius: 50%; background: var(--rosso); animation: lampeggia 1s infinite; }
+@keyframes lampeggia { 50% { opacity: .2; } }
+.pan-stato { color: var(--tenue); font-size: 1.1rem; margin: .9rem 0 .2rem; min-height: 1.5rem; }
+.pan-azioni { display: flex; gap: 1rem; justify-content: center; padding: .6rem; }
+.pannello.visore .pan-schermo { height: 78vh; }
+.pannello.visore .pan-titolo { display: none; }
+
+/* ================= 1.3: VIDEOCHIAMATE E DIAGNOSTICA ================= */
+.testata-dx { display: flex; align-items: center; gap: 1.2rem; }
+button.chiudi-chiamata { background: var(--rosso); color: #fff; }
+button:disabled { opacity: .45; }
+
+/* scelta TV per chiamata di gruppo */
+.contatto.selezionabile { min-height: 10rem; }
+.contatto.selezionabile.scelto { background: var(--notte-3); box-shadow: inset 0 0 0 .2rem var(--verde); }
+.contatto.selezionabile.scelto.nav:focus { box-shadow: inset 0 0 0 .2rem var(--verde), 0 0 0 .22rem var(--lampada), 0 0 1.8rem rgba(255, 201, 74, .45); }
+.spunta {
+  position: absolute; top: .8rem; left: .8rem;
+  width: 1.8rem; height: 1.8rem; border-radius: 50%;
+  border: .15rem solid var(--tenue);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; font-weight: 800; color: var(--notte);
+}
+.scelto .spunta { background: var(--verde); border-color: var(--verde); }
+
+/* schermata videochiamata: a tutto schermo, sopra i margini di sicurezza */
+#s-chiamata.attiva {
+  position: fixed; inset: 0; z-index: 30; margin: 0; padding: 0;
+  background: #000; overflow: hidden;
+}
+.griglia-video { position: absolute; inset: 0; display: grid; gap: .3rem; background: #000; }
+.tile { position: relative; background: #0d0f1f; overflow: hidden; min-height: 0; }
+.tile video { width: 100%; height: 100%; object-fit: cover; background: #000; display: block; }
+.tile.locale video { transform: scaleX(-1); }
+.tile-nome {
+  position: absolute; left: 1rem; bottom: 1rem;
+  background: rgba(0, 0, 0, .55); color: #fff;
+  font-size: 1rem; font-weight: 700; padding: .25rem .8rem; border-radius: .8rem;
+}
+.tile-stato {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--testo); font-size: 1.3rem; font-weight: 700; pointer-events: none;
+}
+.tile-stato:empty { display: none; }
+.tile-dati {
+  display: none;
+  position: absolute; top: .8rem; left: .8rem; margin: 0;
+  background: rgba(0, 0, 0, .65); color: #DFF5E8;
+  font-family: "Roboto Mono", Menlo, monospace; font-size: .8rem; line-height: 1.45;
+  padding: .5rem .8rem; border-radius: .6rem; white-space: pre;
+}
+.griglia-video.con-dati .tile:not(.locale) .tile-dati { display: block; }
+
+/* 1 riquadro: solo io */
+.griglia-video.n1 { grid-template-columns: 1fr; }
+/* 2 riquadri: l'altra TV a schermo intero, io in piccolo */
+.griglia-video.n2 { grid-template-columns: 1fr; }
+.griglia-video.n2 .tile.locale {
+  position: absolute; right: 2rem; bottom: 6rem; z-index: 2;
+  width: 22vw; aspect-ratio: 16 / 9; height: auto;
+  border-radius: .9rem; box-shadow: 0 .8rem 2rem rgba(0, 0, 0, .6);
+}
+.griglia-video.n2 .tile.locale video { object-fit: cover; }
+/* 3 o 4 riquadri: griglia 2×2 */
+.griglia-video.n3, .griglia-video.n4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.griglia-video.n3 .tile video, .griglia-video.n4 .tile video { object-fit: contain; }
+
+.ch-stato {
+  display: none;
+  position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); z-index: 3;
+  background: rgba(22, 26, 51, .85); color: var(--testo);
+  font-size: 1.5rem; font-weight: 800; padding: 1rem 2rem; border-radius: 1.2rem;
+}
+.ch-comandi {
+  position: absolute; left: 50%; bottom: 1.4rem; transform: translateX(-50%); z-index: 4;
+  display: flex; gap: 1rem; padding: .7rem;
+  background: rgba(22, 26, 51, .78); border-radius: 1.4rem;
+}
+
+/* chiamata in arrivo */
+.squillo {
+  display: none;
+  position: fixed; inset: 0; z-index: 60;
+  background: radial-gradient(ellipse at center, rgba(43, 50, 112, .97), rgba(16, 19, 40, .98));
+  align-items: center; justify-content: center; text-align: center;
+}
+.squillo.aperto { display: flex; }
+.sq-avatar { font-size: 7rem; animation: pulsa 1.2s ease-in-out infinite; }
+@keyframes pulsa { 50% { transform: scale(1.08); } }
+.squillo .sotto { margin: .4rem auto 1.4rem; }
+
+/* diagnostica */
+.dg-corpo { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.4rem; margin-top: 1rem; height: calc(100% - 4.5rem); min-height: 0; }
+.dg-sx { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
+.dg-video { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: 1rem; overflow: hidden; }
+.dg-video video { width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); }
+.dg-sovra {
+  position: absolute; top: .7rem; left: .7rem;
+  background: rgba(0, 0, 0, .6); color: #fff;
+  font-size: 1rem; font-weight: 800; padding: .25rem .8rem; border-radius: .7rem;
+}
+.dg-sovra:empty { display: none; }
+.dg-pulsanti { display: flex; flex-wrap: wrap; gap: .8rem; padding: .3rem; }
+.dg-report {
+  overflow-y: auto; min-height: 0;
+  background: rgba(0, 0, 0, .2); border-radius: 1rem; padding: .4rem 1.2rem 1rem;
+  font-size: .95rem;
+}
+.dg-report:focus { box-shadow: inset 0 0 0 .18rem var(--lampada); }
+.dg-report h3 { font-size: 1.1rem; margin: 1rem 0 .4rem; color: var(--lampada); }
+.dg-report p { margin: .3rem 0; color: var(--tenue); line-height: 1.4; }
+.dg-report table { width: 100%; border-collapse: collapse; margin: .3rem 0 .6rem; }
+.dg-report th, .dg-report td { text-align: left; vertical-align: top; padding: .3rem .5rem; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.dg-report th { color: var(--tenue); font-weight: 700; white-space: nowrap; }
+.dg-report small { color: var(--tenue); }
+.dg-errore { color: var(--rosso) !important; }
+.dg-giudizio { color: var(--testo) !important; font-size: 1.05rem; font-weight: 700; }
+.dg-nota { font-size: .85rem; }
+.ch-comandi button { white-space: nowrap; }
+.griglia-video.n2 .tile.locale { bottom: 7.5rem; }
+
+/* ================= 1.4: RIGA COMPATTA, TABLET ================= */
+.riga-compatta { gap: .55rem; padding: .3rem .4rem; }
+.riga-compatta button { font-size: .85rem; padding: .4rem .85rem; border-radius: .7rem; }
+.riga-compatta button.emoji { font-size: 1.2rem; padding: .2rem .55rem; line-height: 1.2; }
+.riga-compatta button.nav:focus { transform: scale(1.08); }
+.scrivi { flex-wrap: wrap; }
+.scrivi input { flex: 1 1 14rem; width: auto; min-width: 0; }
+.testata { flex-wrap: wrap; row-gap: .8rem; }
+
+/* --- schermi touch (tablet): misure da tenere in mano, niente bagliore del telecomando --- */
+html.tablet { font-size: clamp(15px, calc(0.9vw + 8px), 18px); }
+html.tablet #app { padding: max(3vh, env(safe-area-inset-top)) 3vw max(3vh, env(safe-area-inset-bottom)); }
+html.tocco .nav:focus { box-shadow: none; transform: none; }
+html.tocco input.nav:focus { box-shadow: 0 0 0 .15rem var(--lampada); }
+html.tocco .messaggi:focus { box-shadow: none; }
+html.tocco .suggerimento { display: none !important; }
+html.tocco button:active { opacity: .7; }
+html.tocco .riga-scorrevole, html.tocco .messaggi, html.tocco .dg-report { -webkit-overflow-scrolling: touch; }
+
+/* --- tablet in verticale --- */
+@media (orientation: portrait) {
+  .setup-campi { grid-template-columns: 1fr; max-width: none; }
+  .contatti { grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 1rem; }
+  .contatto { min-height: 10rem; }
+  .msg { max-width: 82%; }
+  button.btn-foto img { max-width: 100%; }
+  .dg-corpo { grid-template-columns: 1fr; height: auto; }
+  .dg-report { max-height: 50vh; }
+  .griglia-video.n2 .tile.locale { width: 32vw; aspect-ratio: 3 / 4; bottom: 8rem; right: 1rem; }
+  .griglia-video.n3 { grid-template-columns: 1fr; grid-template-rows: repeat(3, 1fr); }
+  .ch-comandi { flex-wrap: wrap; justify-content: center; width: 94vw; }
+  .pan-schermo { height: auto; width: 92vw; }
+  .elenco-stanze { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+}
+.scrivi { gap: .6rem; }
+.scrivi button { font-size: .95rem; padding: .6rem .95rem; }
+.scrivi input { flex: 1 1 9rem; font-size: 1.05rem; padding: .6rem 1rem; }
+/* tablet: pulsanti comodi per il dito (almeno ~44 px) */
+html.tablet { font-size: clamp(17px, calc(0.9vw + 10px), 20px); }
+html.tablet .riga-compatta button { padding: .5rem .9rem; }
+html.tablet .riga-compatta button.emoji { padding: .35rem .6rem; }
+html.tablet .scrivi button, html.tablet .scrivi input { padding-top: .7rem; padding-bottom: .7rem; }
+
+/* ================= 1.6: VIDEO ADATTATO ALLO SCHERMO ================= */
+.tile video.principale { position: relative; z-index: 1; }
+.tile video.sfondo {
+  display: none;
+  position: absolute; inset: 0; z-index: 0;
+  width: 100%; height: 100%; object-fit: cover;
+  filter: blur(28px) brightness(.55); transform: scale(1.15);
+}
+.tile.adatta video.principale { object-fit: contain; background: transparent; }
+.tile.adatta video.sfondo { display: block; }
+.tile-nome, .tile-stato, .tile-dati { z-index: 2; }
+@media (orientation: portrait) {
+  .griglia-video.n2 .tile:not(.locale) .tile-nome { bottom: auto; left: auto; top: 1rem; right: 1rem; }
+}
+
+/* ================= 1.7: COMPUTER (MAC/PC) ================= */
+html.desktop { font-size: clamp(14px, calc(0.45vw + 9px), 17px); }
+html.desktop #app { max-width: 1500px; margin: 0 auto; padding: 2.2rem 2.6rem; }
+html.desktop button { cursor: pointer; }
+html.desktop button:hover { filter: brightness(1.12); }
+html.desktop .contatto:hover { box-shadow: 0 0 0 .15rem rgba(255, 201, 74, .5); }
+html.desktop .suggerimento { display: none !important; }
+html.desktop .msg { max-width: 55%; }
+html.desktop .riga-scorrevole { scrollbar-width: thin; }

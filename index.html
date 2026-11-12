@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat TV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone/icona-192.png">
+<link rel="apple-touch-icon" href="icone/icona-180.png">
+<meta name="theme-color" content="#161A33">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Chat TV">
+</head>
+<body>
+<main id="app">
+
+  <!-- AVVIO -->
+  <section id="s-avvio" class="schermata attiva centrata">
+    <div class="logo">💬</div>
+    <h1>Chat TV</h1>
+    <p class="sotto">Connessione in corso…</p>
+  </section>
+
+  <!-- ERRORE -->
+  <section id="s-errore" class="schermata centrata">
+    <div class="logo">⚠️</div>
+    <h1 id="err-titolo">Qualcosa non va</h1>
+    <p id="err-testo" class="sotto"></p>
+    <button id="btn-riprova" class="nav primario">Riprova</button>
+  </section>
+
+  <!-- PRIMO AVVIO / MODIFICA PROFILO -->
+  <section id="s-setup" class="schermata">
+    <h1>Benvenuto in Chat TV</h1>
+    <p class="sotto">Scegli la stanza di questa TV e inserisci il codice famiglia. Tutte le TV con lo stesso codice possono scriversi.</p>
+    <div class="setup-campi">
+      <div class="campo">
+        <label>Stanza</label>
+        <div class="tendina">
+          <button id="btn-stanza" class="nav campo-tendina vuota" type="button"><span id="stanza-testo">Scegli la stanza</span><span class="freccia">▾</span></button>
+          <div id="elenco-stanze" class="elenco-stanze"></div>
+        </div>
+      </div>
+      <div class="campo">
+        <label for="in-dettaglio">Di chi è (facoltativo)</label>
+        <input id="in-dettaglio" class="nav" maxlength="15" placeholder="Es. Chiara" autocomplete="off">
+      </div>
+      <div class="campo">
+        <label for="in-codice">Codice famiglia</label>
+        <input id="in-codice" class="nav maiuscolo" maxlength="20" placeholder="Es. PAVONI" autocomplete="off" autocapitalize="characters">
+      </div>
+    </div>
+    <label class="etichetta">Scegli un'immagine</label>
+    <div id="avatar-griglia" class="avatar-griglia"></div>
+    <div class="riga-azioni">
+      <button id="btn-salva" class="nav primario">Inizia a chattare</button>
+      <span id="setup-msg" class="msg-errore"></span>
+    </div>
+  </section>
+
+  <!-- HOME: CONTATTI -->
+  <section id="s-home" class="schermata">
+    <header class="testata">
+      <div class="persona">
+        <span id="home-avatar" class="avatar"></span>
+        <div>
+          <div id="home-nome" class="nome"></div>
+          <div id="home-stato" class="stato"></div>
+        </div>
+      </div>
+      <div class="testata-dx">
+        <button id="btn-gruppo" class="nav">📹 Videochiamata di gruppo</button>
+        <button id="btn-impostazioni" class="nav">⚙️ Impostazioni</button>
+      </div>
+    </header>
+    <h2>Con chi vuoi parlare?</h2>
+    <div id="contatti" class="contatti"></div>
+    <p id="contatti-vuoto" class="vuoto">Nessun'altra TV nel gruppo. Installa Chat TV su un'altra TV e usa lo stesso codice famiglia.</p>
+  </section>
+
+  <!-- CHAT -->
+  <section id="s-chat" class="schermata">
+    <header class="testata">
+      <button id="btn-indietro" class="nav">← Indietro</button>
+      <div class="persona">
+        <span id="chat-avatar" class="avatar"></span>
+        <div>
+          <div id="chat-nome" class="nome"></div>
+          <div id="chat-stato" class="stato"></div>
+        </div>
+      </div>
+    </header>
+    <div id="messaggi" class="messaggi nav scorrevole" tabindex="0"></div>
+    <p class="suggerimento">▲▼ scorri, OK per aprire foto e vocali</p>
+    <div id="rapidi" class="riga-scorrevole riga-compatta"></div>
+    <div class="scrivi">
+      <button id="btn-foto" class="nav">📷 Foto</button>
+      <button id="btn-vocale" class="nav">🎙️ Vocale</button>
+      <input id="in-testo" class="nav" maxlength="300" placeholder="Premi OK per scrivere" enterkeyhint="send" autocomplete="off">
+      <button id="btn-detta" class="nav">🗣️ Detta</button>
+      <button id="btn-videochiama" class="nav">📹 Videochiama</button>
+      <button id="btn-invia" class="nav primario">Invia</button>
+    </div>
+  </section>
+
+  <!-- IMPOSTAZIONI -->
+  <section id="s-impostazioni" class="schermata">
+    <header class="testata">
+      <button id="btn-imp-indietro" class="nav">← Indietro</button>
+      <h2 class="titolo-testata">Impostazioni</h2>
+    </header>
+    <div class="scheda-info">
+      <span id="imp-avatar" class="avatar grande"></span>
+      <div>
+        <div id="imp-nome" class="nome"></div>
+        <div id="imp-codice" class="stato"></div>
+        <div id="imp-versione" class="stato"></div>
+      </div>
+    </div>
+    <div class="lista-azioni">
+      <button id="btn-modifica" class="nav">Modifica nome e immagine</button>
+      <button id="btn-aggiorna" class="nav">Controlla aggiornamenti</button>
+      <button id="btn-avvisi" class="nav">🔔 Avvisi sopra le altre app</button>
+      <button id="btn-diagnostica" class="nav">🔬 Diagnostica webcam</button>
+      <button id="btn-qualita" class="nav">🎥 Qualità video</button>
+      <button id="btn-codec" class="nav">🧩 Codec video</button>
+      <button id="btn-esci-gruppo" class="nav pericolo">Esci dal gruppo famiglia</button>
+    </div>
+  </section>
+
+  <!-- VIDEOCHIAMATA DI GRUPPO: SCELTA TV -->
+  <section id="s-gruppo" class="schermata">
+    <header class="testata">
+      <button id="gr-indietro" class="nav">← Indietro</button>
+      <h2 class="titolo-testata">Videochiamata di gruppo</h2>
+      <button id="gr-chiama" class="nav primario">📹 Chiama</button>
+    </header>
+    <p class="sotto">Scegli fino a 3 TV. Si possono chiamare solo le TV online, cioè con Chat TV aperta.</p>
+    <div id="gr-contatti" class="contatti"></div>
+  </section>
+
+  <!-- VIDEOCHIAMATA -->
+  <section id="s-chiamata" class="schermata">
+    <div id="griglia-video" class="griglia-video"></div>
+    <div id="ch-stato" class="ch-stato"></div>
+    <div class="ch-comandi">
+      <button id="ch-mic" class="nav">🎙️ Microfono on</button>
+      <button id="ch-cam" class="nav">📷 Video on</button>
+      <button id="ch-dati" class="nav">📊 Dati tecnici</button>
+      <button id="ch-chiudi" class="nav chiudi-chiamata">📞 Chiudi</button>
+    </div>
+  </section>
+
+  <!-- DIAGNOSTICA WEBCAM -->
+  <section id="s-diagnostica" class="schermata">
+    <header class="testata">
+      <button id="dg-indietro" class="nav">← Indietro</button>
+      <h2 class="titolo-testata">Diagnostica webcam</h2>
+    </header>
+    <div class="dg-corpo">
+      <div class="dg-sx">
+        <div class="dg-video">
+          <video id="dg-video" autoplay playsinline muted></video>
+          <div id="dg-sovra" class="dg-sovra"></div>
+        </div>
+        <div class="dg-pulsanti">
+          <button id="dg-test" class="nav primario">⚡ Test qualità chiamata</button>
+          <button id="dg-risoluzioni" class="nav">📐 Prova risoluzioni</button>
+          <button id="dg-camera" class="nav">🎥 Cambia webcam</button>
+        </div>
+      </div>
+      <div id="dg-report" class="dg-report nav scorrevole" tabindex="0"></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- CHIAMATA IN ARRIVO -->
+<div id="squillo" class="squillo">
+  <div class="squillo-scheda">
+    <div id="sq-avatar" class="sq-avatar"></div>
+    <h1 id="sq-titolo"></h1>
+    <p id="sq-sotto" class="sotto"></p>
+    <div class="pan-azioni">
+      <button id="sq-rispondi" class="nav primario">📹 Rispondi</button>
+      <button id="sq-rifiuta" class="nav chiudi-chiamata">Rifiuta</button>
+    </div>
+  </div>
+</div>
+
+<!-- PANNELLO FOTO / VOCALE / VISORE -->
+<div id="pannello" class="pannello">
+  <div class="pannello-scheda">
+    <h2 id="pan-titolo" class="pan-titolo"></h2>
+    <div class="pan-schermo">
+      <video id="pan-video" autoplay playsinline muted></video>
+      <img id="pan-foto" alt="">
+      <div id="pan-mic" class="pan-mic">🎙️</div>
+      <div id="pan-conto" class="pan-conto"></div>
+      <div id="pan-rec" class="pan-rec"><span class="punto"></span><span id="pan-tempo">0:00</span></div>
+    </div>
+    <p id="pan-stato" class="pan-stato"></p>
+    <div id="pan-azioni" class="pan-azioni"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script src="chiamata.js"></script>
+<script src="diagnostica.js"></script>
+</body>
+</html>
