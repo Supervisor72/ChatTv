@@ -8,7 +8,68 @@
   var C = window.CTV;
   var $ = C.$;
   var MAX_PERSONE = 4;
-  var ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }];
+  var STUN = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }];
+  var ICE = STUN;
+
+  // ----- Server di appoggio TURN (Metered Open Relay) -----
+  var turn = { server: null, scade: 0, inCorso: null };
+  function turnStatico() { return Array.isArray(window.TURN_STATICO) && window.TURN_STATICO.length ? window.TURN_STATICO : null; }
+  function turnConfigurato() {
+    var t = window.TURN_METERED || {};
+    return !!(turnStatico() || (t.app && t.apiKey));
+  }
+  // Restituisce sempre una lista utilizzabile: se Metered non risponde si va avanti col solo collegamento diretto
+  function serverIce() {
+    if (!turnConfigurato()) return Promise.resolve(STUN);
+    if (turnStatico()) return Promise.resolve(STUN.concat(turnStatico()));
+    if (turn.server && Date.now() < turn.scade) return Promise.resolve(STUN.concat(turn.server));
+    if (turn.inCorso) return turn.inCorso;
+    var t = window.TURN_METERED;
+    var url = 'https://' + encodeURIComponent(t.app) + '.metered.live/api/v1/turn/credentials?apiKey=' + encodeURIComponent(t.apiKey);
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 5000);
+    turn.inCorso = fetch(url, ctrl ? { signal: ctrl.signal } : undefined).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (lista) {
+      if (!Array.isArray(lista) || !lista.length) throw new Error('risposta vuota');
+      turn.server = lista;
+      turn.scade = Date.now() + 3600000; // si richiedono di nuovo dopo un'ora
+      return STUN.concat(lista);
+    }).catch(function (e) {
+      if (window.console) console.warn('TURN non disponibile:', e);
+      return STUN;
+    }).then(function (l) {
+      clearTimeout(timer);
+      turn.inCorso = null;
+      return l;
+    });
+    return turn.inCorso;
+  }
+
+  // Verifica: chiede al browser un collegamento SOLO tramite il server di appoggio
+  function testTurn() {
+    if (!turnConfigurato()) return Promise.resolve({ ok: false, motivo: 'non configurato (config.js vuoto)' });
+    turn.scade = 0;
+    return serverIce().then(function (lista) {
+      if (lista === STUN || lista.length === STUN.length) return { ok: false, motivo: 'Metered non ha dato le credenziali: controlla config.js' };
+      return new Promise(function (ris) {
+        var pc, fatto = false, inizio = Date.now();
+        try { pc = new RTCPeerConnection({ iceServers: lista, iceTransportPolicy: 'relay' }); }
+        catch (e) { ris({ ok: false, motivo: e.message }); return; }
+        var fine = function (r) { if (fatto) return; fatto = true; try { pc.close(); } catch (e) { /* niente */ } ris(r); };
+        pc.onicecandidate = function (e) {
+          if (e.candidate && / relay /.test(e.candidate.candidate)) {
+            var prot = (e.candidate.candidate.match(/ (udp|tcp) /i) || [])[1] || '';
+            fine({ ok: true, ms: Date.now() - inizio, protocollo: prot.toUpperCase() });
+          } else if (!e.candidate) fine({ ok: false, motivo: 'il server non ha risposto' });
+        };
+        pc.createDataChannel('prova');
+        pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).catch(function (e) { fine({ ok: false, motivo: e.message }); });
+        setTimeout(function () { fine({ ok: false, motivo: 'tempo scaduto' }); }, 10000);
+      });
+    });
+  }
 
   // ================= QUALITÀ (condivisa con la diagnostica) =================
   // br = bitrate massimo in kbps verso ciascuna TV, con 1, 2 o 3 TV collegate
@@ -162,7 +223,8 @@
     chiaveQualita: chiaveQualita, profiloQualita: profiloQualita,
     apriWebcam: apriWebcam, erroreWebcam: erroreWebcam,
     preferisciCodec: preferisciCodec, parametriPer: parametriPer, impostaParametri: impostaParametri,
-    sdpConBitrate: sdpConBitrate, bitrateIniziale: bitrateIniziale, eTablet: eTablet
+    sdpConBitrate: sdpConBitrate, bitrateIniziale: bitrateIniziale, eTablet: eTablet,
+    testTurn: testTurn, turnConfigurato: turnConfigurato
   };
 
   // ================= STATO DELLA CHIAMATA =================
@@ -330,7 +392,11 @@
       aggiornaVista(t, !!vt);
       ascoltaVoce(t, st);
       aggiornaPulsanti();
-      collegaSegnali(cid);
+      // prima di collegarsi, si preparano i server (diretto + eventuale ponte)
+      serverIce().then(function (lista) {
+        ICE = lista;
+        if (stato.cid === cid) collegaSegnali(cid);
+      });
     }).catch(function (e) {
       C.toast(soloAudio ? 'Microfono non disponibile: collega la webcam con microfono' : erroreWebcam(e));
       riaggancia();
@@ -437,6 +503,7 @@
         clearTimeout(stato.timeout);
         impostaStato('');
         applicaQualita();
+        setTimeout(function () { controllaPercorso(p); }, 1500);
       }
     };
     pc.onconnectionstatechange = function () {
@@ -447,6 +514,7 @@
         clearTimeout(stato.timeout);
         impostaStato('');
         applicaQualita();
+        setTimeout(function () { controllaPercorso(p); }, 1500);
       } else if (st === 'disconnected') {
         el.textContent = 'Connessione instabile…';
       } else if (st === 'failed') {
@@ -509,7 +577,35 @@
   function applicaQualita() {
     var ids = Object.keys(peers);
     var par = parametriPer(ids.length);
-    ids.forEach(function (id) { impostaParametri(peers[id].pc, par); });
+    var vt = stato.locale ? stato.locale.getVideoTracks()[0] : null;
+    var alt = (vt && vt.getSettings && vt.getSettings().height) || 1080;
+    ids.forEach(function (id) {
+      var q = par;
+      if (peers[id].relay) {
+        // tramite server di appoggio: 720p e 1,2 Mb/s al massimo, per non consumare la quota mensile
+        q = { br: Math.min(par.br, 1200000), scala: Math.max(par.scala, alt / 720), degrado: 'balanced' };
+      }
+      impostaParametri(peers[id].pc, q);
+    });
+  }
+
+  // Controlla se il collegamento con una TV passa dal server di appoggio
+  function controllaPercorso(p) {
+    p.pc.getStats().then(function (rep) {
+      var coppia = null, cand = {};
+      rep.forEach(function (r) {
+        if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected)) coppia = r;
+        if (r.type === 'local-candidate' || r.type === 'remote-candidate') cand[r.id] = r;
+      });
+      if (!coppia) return;
+      var l = cand[coppia.localCandidateId], r = cand[coppia.remoteCandidateId];
+      var relay = !!((l && l.candidateType === 'relay') || (r && r.candidateType === 'relay'));
+      if (relay !== !!p.relay) {
+        p.relay = relay;
+        applicaQualita();
+        if (relay) C.toast('🌐 Chiamata tramite server di appoggio (qualità ridotta per risparmiare)');
+      }
+    }).catch(function () { /* niente */ });
   }
 
   function chiudiPeer(id, avviso) {

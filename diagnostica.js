@@ -8,7 +8,7 @@
   var esc = C.esc;
 
   var dg = { stream: null, cams: [], misura: null, occupato: false, attiva: false };
-  var sez = { webcam: '', risoluzioni: '', test: '', codec: '', hardware: '' };
+  var sez = { webcam: '', risoluzioni: '', test: '', codec: '', hardware: '', turn: '' };
 
   // ---------- utilità ----------
   function attesa(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -22,6 +22,7 @@
       '<h3>Webcam</h3>' + (sez.webcam || '<p>Accensione…</p>') +
       '<h3>Test qualità chiamata</h3>' + (sez.test || '<p>Premi ⚡ Test qualità chiamata: misura cosa riesce a inviare la TV in una chiamata a 2 e a 4 (circa 30 secondi).</p>') +
       '<h3>Risoluzioni della webcam</h3>' + (sez.risoluzioni || '<p>Premi 📐 Prova risoluzioni per verificare 4K, 1440p, 1080p e 720p a 30 e 60 fps.</p>') +
+      '<h3>Server di appoggio (TURN)</h3>' + (sez.turn || '<p>' + (V.turnConfigurato() ? 'Configurato. Premi 🌐 Test server di appoggio per verificarlo.' : 'Non configurato: le chiamate usano solo il collegamento diretto.') + '</p>') +
       '<h3>Codec video</h3>' + sez.codec +
       '<h3>Hardware della TV</h3>' + sez.hardware;
   }
@@ -322,7 +323,7 @@
   // ---------- apertura / chiusura ----------
   function apriDiagnostica() {
     dg.attiva = true;
-    sez.webcam = sez.risoluzioni = sez.test = '';
+    sez.webcam = sez.risoluzioni = sez.test = sez.turn = '';
     infoCodec();
     infoHardware();
     render();
@@ -359,6 +360,16 @@
   $('dg-test').onclick = testQualita;
   $('dg-risoluzioni').onclick = provaRisoluzioni;
   $('dg-camera').onclick = cambiaCamera;
+  $('dg-turn').onclick = function () {
+    sez.turn = '<p>Verifica in corso…</p>';
+    render();
+    V.testTurn().then(function (r) {
+      sez.turn = r.ok
+        ? '<p class="dg-giudizio">✅ Funziona: ponte raggiunto in ' + r.ms + ' ms' + (r.protocollo ? ' (' + r.protocollo + ')' : '') + '.</p><p class="dg-nota">Le chiamate tra reti diverse (4G, hotel) passeranno da qui quando il collegamento diretto non riesce.</p>'
+        : '<p class="dg-errore">❌ Non funziona: ' + esc(r.motivo) + '</p>';
+      render();
+    });
+  };
 
   C.estensioni.impostazioni.push(etichetteImpostazioni);
   C.estensioni.indietro.push(function () {
