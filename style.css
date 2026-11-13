@@ -457,3 +457,28 @@ html.desktop .riga-scorrevole { scrollbar-width: thin; }
 /* ================= 1.8: SVUOTA CHAT ================= */
 .pannello.solo-testo .pan-schermo { display: none; }
 .pannello.solo-testo .pan-stato { max-width: 40rem; margin: .6rem auto 1.2rem; color: var(--testo); line-height: 1.45; }
+
+/* ================= 1.9: CHIAMATA SOLO VOCE ================= */
+.tile-avatar {
+  position: absolute; inset: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #2B3270 0%, #161A33 75%);
+}
+.tile-avatar span {
+  font-size: 6rem; line-height: 1;
+  width: 10rem; height: 10rem; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .06);
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.tile.parla .tile-avatar span { box-shadow: 0 0 0 .35rem var(--verde), 0 0 2.5rem rgba(95, 211, 154, .55); transform: scale(1.04); }
+.tile.parla.con-video { box-shadow: inset 0 0 0 .3rem var(--verde); }
+.tile.con-video .tile-avatar { display: none; }
+.tile:not(.con-video) video { visibility: hidden; }
+.tile.locale .tile-avatar span { font-size: 3rem; width: 5rem; height: 5rem; }
+.griglia-video.n3 .tile-avatar span, .griglia-video.n4 .tile-avatar span { font-size: 4rem; width: 7rem; height: 7rem; }
+@media (orientation: portrait) {
+  .scrivi > button { flex: 1 1 0; padding-left: .3rem; padding-right: .3rem; }
+  .scrivi #in-testo { order: 10; flex: 1 1 60%; }
+  .scrivi #btn-invia { order: 11; flex: 0 0 auto; padding-left: 1.2rem; padding-right: 1.2rem; }
+}

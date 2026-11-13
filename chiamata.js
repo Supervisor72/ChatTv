@@ -170,7 +170,8 @@
   var stato = nuovoStato();
   function nuovoStato() {
     return { cid: null, ref: null, mioRef: null, locale: null, ascolti: [], timeout: null, timerDati: null,
-      invitati: [], rifiuti: {}, chiamante: false, connesso: false, chiudendo: false, dati: false };
+      invitati: [], rifiuti: {}, chiamante: false, connesso: false, chiudendo: false, dati: false,
+      soloAudio: false, video: {} };
   }
   function inChiamata() { return !!stato.cid; }
   function io() { return C.profilo().id; }
@@ -182,6 +183,7 @@
   }
   function log(e) { if (window.console) console.warn('Chiamata:', e); }
   function pulito(o) { return JSON.parse(JSON.stringify(o)); } // Firebase non accetta valori undefined
+  function haVideo() { return !!(stato.locale && stato.locale.getVideoTracks().length); }
   function schermoAcceso(si) { if (window.Android && Android.schermoAcceso) Android.schermoAcceso(si); }
 
   function impostaStato(t) {
@@ -197,7 +199,9 @@
     t.setAttribute('data-id', id);
     t.innerHTML = '<video class="principale" autoplay playsinline' + (locale ? ' muted' : '') + '></video>' +
       (locale ? '' : '<video class="sfondo" autoplay playsinline muted></video>') +
+      '<div class="tile-avatar"><span></span></div>' +
       '<div class="tile-nome"></div><div class="tile-stato"></div><pre class="tile-dati"></pre>';
+    t.querySelector('.tile-avatar span').textContent = locale ? (C.profilo().avatar || '📺') : avatarDi(id);
     if (!locale) {
       var v = t.querySelector('video.principale');
       v.addEventListener('resize', function () { adatta(t); });
@@ -207,6 +211,46 @@
     $('griglia-video').appendChild(t);
     disponi();
     return t;
+  }
+
+  // Mostra video o avatar nel riquadro
+  function aggiornaVista(t, conVideo) {
+    if (t) t.classList.toggle('con-video', !!conVideo);
+  }
+  function aggiornaVistaRemota(id) {
+    var p = peers[id];
+    if (p && p.tile) aggiornaVista(p.tile, stato.video[id]);
+  }
+
+  // ----- indicatore "sta parlando" -----
+  var voce = { ctx: null, misure: [], timer: null };
+  function ascoltaVoce(tile, stream) {
+    if (!stream || !stream.getAudioTracks().length) return;
+    try {
+      voce.ctx = voce.ctx || new (window.AudioContext || window.webkitAudioContext)();
+      if (voce.ctx.state === 'suspended') voce.ctx.resume();
+      var src = voce.ctx.createMediaStreamSource(stream);
+      var an = voce.ctx.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      voce.misure = voce.misure.filter(function (m) { return m.tile !== tile; });
+      voce.misure.push({ tile: tile, an: an, src: src, buf: new Uint8Array(an.fftSize) });
+    } catch (e) { return; }
+    if (!voce.timer) voce.timer = setInterval(function () {
+      voce.misure = voce.misure.filter(function (m) { return document.body.contains(m.tile); });
+      voce.misure.forEach(function (m) {
+        m.an.getByteTimeDomainData(m.buf);
+        var somma = 0;
+        for (var i = 0; i < m.buf.length; i++) { var d = (m.buf[i] - 128) / 128; somma += d * d; }
+        m.tile.classList.toggle('parla', Math.sqrt(somma / m.buf.length) > 0.04);
+      });
+    }, 160);
+  }
+  function fermaVoce() {
+    clearInterval(voce.timer);
+    voce.timer = null;
+    voce.misure.forEach(function (m) { try { m.src.disconnect(); } catch (e) { /* niente */ } });
+    voce.misure = [];
   }
 
   // Se il video ha un formato diverso dal riquadro (es. tablet in verticale), lo mostro intero con sfondo sfumato
@@ -227,7 +271,7 @@
   }
 
   // ================= AVVIO / INGRESSO =================
-  function avviaChiamata(ids) {
+  function avviaChiamata(ids, soloAudio) {
     var g = C.gruppoRef();
     if (!g || inChiamata()) return;
     ids = ids.slice(0, MAX_PERSONE - 1);
@@ -235,17 +279,24 @@
     var ref = g.child('chiamate').push();
     var invitati = {};
     ids.forEach(function (id) { invitati[id] = true; });
-    ref.set({ da: io(), ts: C.TS(), invitati: invitati });
-    ids.forEach(function (id) { g.child('squilli/' + id).set({ chiamata: ref.key, da: io(), ts: C.TS() }); });
+    var tipo = soloAudio ? 'audio' : 'video';
+    ref.set({ da: io(), ts: C.TS(), invitati: invitati, tipo: tipo });
+    ids.forEach(function (id) { g.child('squilli/' + id).set({ chiamata: ref.key, da: io(), ts: C.TS(), tipo: tipo }); });
     stato.invitati = ids;
     stato.chiamante = true;
-    entraInChiamata(ref.key, 'Sto chiamando ' + elencoNomi(ids) + '…');
+    entraInChiamata(ref.key, 'Sto chiamando ' + elencoNomi(ids) + '…', soloAudio);
   }
 
-  function entraInChiamata(cid, messaggio) {
+  function apriSoloMicrofono() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return Promise.reject({ name: 'NoMedia' });
+    return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+  }
+
+  function entraInChiamata(cid, messaggio, soloAudio) {
     if (inChiamata() || !C.gruppoRef()) return;
     if (C.pannelloAperto()) C.chiudiPannello();
     stato.cid = cid;
+    stato.soloAudio = !!soloAudio;
     stato.ref = C.gruppoRef().child('chiamate/' + cid);
     $('griglia-video').innerHTML = '';
     aggiornaPulsanti();
@@ -253,16 +304,26 @@
     impostaStato(messaggio || 'Collegamento…');
     schermoAcceso(true);
 
-    apriWebcam(true).then(function (st) {
+    var apri = soloAudio ? apriSoloMicrofono() : apriWebcam(true).catch(function (e) {
+      // niente webcam: si partecipa comunque con la sola voce
+      return apriSoloMicrofono().then(function (st) {
+        C.toast('Webcam non disponibile: partecipi solo con la voce');
+        return st;
+      }, function () { throw e; });
+    });
+    apri.then(function (st) {
       if (stato.cid !== cid) { st.getTracks().forEach(function (t) { t.stop(); }); return; }
       stato.locale = st;
       var vt = st.getVideoTracks()[0];
       if (vt && 'contentHint' in vt) vt.contentHint = 'motion';
       var t = creaTile(io(), 'Tu', true);
       t.querySelector('video.principale').srcObject = st;
+      aggiornaVista(t, !!vt);
+      ascoltaVoce(t, st);
+      aggiornaPulsanti();
       collegaSegnali(cid);
     }).catch(function (e) {
-      C.toast(erroreWebcam(e));
+      C.toast(soloAudio ? 'Microfono non disponibile: collega la webcam con microfono' : erroreWebcam(e));
       riaggancia();
     });
   }
@@ -278,14 +339,22 @@
       }
       stato.mioRef = ref.child('partecipanti/' + me);
       stato.mioRef.onDisconnect().remove();
-      stato.mioRef.set({ ts: C.TS() });
+      stato.mioRef.set({ ts: C.TS(), video: haVideo() });
 
       var refSeg = ref.child('segnali/' + me);
       var cbSeg = refSeg.on('child_added', gestisciSegnale);
       var refPart = ref.child('partecipanti');
       var cbAdd = refPart.on('child_added', function (c) {
-        var id = c.key;
-        if (id !== me && !peers[id] && me > id) creaPeer(id, true);
+        var id = c.key, v = c.val() || {};
+        if (id === me) return;
+        stato.video[id] = !!v.video;
+        if (!peers[id] && me > id) creaPeer(id, true);
+        aggiornaVistaRemota(id);
+      });
+      var cbCam = refPart.on('child_changed', function (c) {
+        if (c.key === me) return;
+        stato.video[c.key] = !!(c.val() || {}).video;
+        aggiornaVistaRemota(c.key);
       });
       var cbRem = refPart.on('child_removed', function (c) { if (c.key !== me) chiudiPeer(c.key, true); });
       var refRif = ref.child('rifiuti');
@@ -294,6 +363,7 @@
         refSeg.off('child_added', cbSeg);
         refPart.off('child_added', cbAdd);
         refPart.off('child_removed', cbRem);
+        refPart.off('child_changed', cbCam);
         refRif.off('child_added', cbRif);
       });
 
@@ -329,17 +399,27 @@
     p.tile.querySelector('.tile-stato').textContent = 'Collegamento…';
 
     if (stato.locale) stato.locale.getTracks().forEach(function (t) { pc.addTrack(t, stato.locale); });
+    if (offerente && !haVideo()) {
+      try { pc.addTransceiver('video', { direction: 'sendrecv', streams: stato.locale ? [stato.locale] : [] }); } catch (e) { log(e); }
+    }
     preferisciCodec(pc);
+    aggiornaVistaRemota(id);
 
     pc.onicecandidate = function (e) { if (e.candidate) invia(id, { tipo: 'ice', c: e.candidate.toJSON() }); };
     pc.ontrack = function (e) {
       var v = p.tile.querySelector('video.principale'), sf = p.tile.querySelector('video.sfondo');
-      if (v.srcObject !== e.streams[0]) {
-        v.srcObject = e.streams[0];
-        if (sf) sf.srcObject = e.streams[0];
+      var flusso = e.streams[0];
+      if (!flusso) {
+        flusso = v.srcObject || new MediaStream();
+        if (flusso.getTracks().indexOf(e.track) < 0) flusso.addTrack(e.track);
+      }
+      if (v.srcObject !== flusso) {
+        v.srcObject = flusso;
+        if (sf) sf.srcObject = flusso;
         var pr = v.play();
         if (pr && pr.catch) pr.catch(function () { /* ripartirà da solo */ });
       }
+      if (e.track.kind === 'audio') ascoltaVoce(p.tile, new MediaStream([e.track]));
     };
     pc.onconnectionstatechange = function () {
       var st = pc.connectionState, el = p.tile.querySelector('.tile-stato');
@@ -382,6 +462,12 @@
     if (s.tipo === 'offer') {
       if (!p) p = creaPeer(s.da, false);
       p.pc.setRemoteDescription({ type: 'offer', sdp: sdpConBitrate(s.sdp, bitrateIniziale(Object.keys(peers).length)) }).then(function () {
+        // canale video pronto in entrambe le direzioni, anche se ora non ho la webcam accesa
+        p.pc.getTransceivers().forEach(function (t) {
+          if (t.receiver && t.receiver.track && t.receiver.track.kind === 'video' && !t.stopped) {
+            try { t.direction = 'sendrecv'; } catch (e) { /* niente */ }
+          }
+        });
         preferisciCodec(p.pc);
         svuotaCoda(p);
         return p.pc.createAnswer();
@@ -449,6 +535,7 @@
         ref.child('partecipanti').once('value').then(function (s) { if (!s.exists()) ref.remove(); }).catch(log);
       }, 800);
     }
+    fermaVoce();
     stato = nuovoStato();
     $('griglia-video').innerHTML = '';
     $('griglia-video').className = 'griglia-video';
@@ -461,14 +548,57 @@
     var a = stato.locale ? stato.locale.getAudioTracks()[0] : null;
     var v = stato.locale ? stato.locale.getVideoTracks()[0] : null;
     $('ch-mic').textContent = (a && !a.enabled) ? '🔇 Microfono off' : '🎙️ Microfono on';
-    $('ch-cam').textContent = (v && !v.enabled) ? '🚫 Video off' : '📷 Video on';
+    $('ch-cam').textContent = !v ? '📷 Attiva video' : (!v.enabled ? '🚫 Video off' : '📷 Video on');
     $('ch-dati').textContent = stato.dati ? '📊 Nascondi dati' : '📊 Dati tecnici';
+  }
+
+  // Da chiamata audio a videochiamata, senza riattaccare
+  var accensione = false;
+  function attivaVideo() {
+    if (!stato.locale || haVideo() || accensione) return;
+    accensione = true;
+    $('ch-cam').textContent = '⏳ Accensione…';
+    apriWebcam(false).then(function (st) {
+      accensione = false;
+      if (!inChiamata() || !stato.locale) { st.getTracks().forEach(function (t) { t.stop(); }); return; }
+      var vt = st.getVideoTracks()[0];
+      if ('contentHint' in vt) vt.contentHint = 'motion';
+      stato.locale.addTrack(vt);
+      var mio = $('griglia-video').querySelector('.tile.locale');
+      if (mio) {
+        mio.querySelector('video.principale').srcObject = stato.locale;
+        aggiornaVista(mio, true);
+      }
+      Object.keys(peers).forEach(function (id) {
+        var pc = peers[id].pc, fatto = false;
+        pc.getTransceivers().forEach(function (t) {
+          if (fatto || t.stopped || !t.receiver || !t.receiver.track || t.receiver.track.kind !== 'video') return;
+          if (t.sender.track) return;
+          fatto = true;
+          try { t.direction = 'sendrecv'; } catch (e) { /* niente */ }
+          t.sender.replaceTrack(vt).catch(log);
+        });
+      });
+      applicaQualita();
+      if (stato.mioRef) stato.mioRef.update({ video: true });
+      aggiornaPulsanti();
+    }).catch(function (e) {
+      accensione = false;
+      C.toast(erroreWebcam(e));
+      aggiornaPulsanti();
+    });
   }
 
   function alterna(tipo) {
     if (!stato.locale) return;
+    if (tipo === 'video' && !haVideo()) { attivaVideo(); return; }
     var tr = tipo === 'audio' ? stato.locale.getAudioTracks()[0] : stato.locale.getVideoTracks()[0];
     if (tr) tr.enabled = !tr.enabled;
+    if (tipo === 'video' && tr) {
+      var mio = $('griglia-video').querySelector('.tile.locale');
+      aggiornaVista(mio, tr.enabled);
+      if (stato.mioRef) stato.mioRef.update({ video: tr.enabled });
+    }
     aggiornaPulsanti();
   }
 
@@ -496,9 +626,10 @@
     Object.keys(peers).forEach(function (id) {
       var p = peers[id];
       p.pc.getStats().then(function (rep) {
-        var out = null, inn = null, coppia = null, codecs = {}, cand = {}, sorgente = null;
+        var out = null, inn = null, coppia = null, codecs = {}, cand = {}, sorgente = null, innA = null;
         rep.forEach(function (r) {
           if (r.type === 'media-source' && r.kind === 'video') sorgente = r;
+          else if (r.type === 'inbound-rtp' && r.kind === 'audio') innA = r;
           else if (r.type === 'outbound-rtp' && r.kind === 'video') out = r;
           else if (r.type === 'inbound-rtp' && r.kind === 'video') inn = r;
           else if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected)) coppia = r;
@@ -507,14 +638,18 @@
         });
         var adesso = Date.now(), prec = p.prec, dt = prec ? (adesso - prec.t) / 1000 : 0;
         var righe = [];
-        if (inn) {
+        if (innA) {
+          var kA = dt && prec.rxa != null ? (innA.bytesReceived - prec.rxa) * 8 / dt / 1000 : 0;
+          righe.push('Voce    ' + Math.round(kA) + ' kb/s  ' + nomeCodec(codecs[innA.codecId]) + '  persi ' + (innA.packetsLost || 0));
+        }
+        if (inn && inn.frameWidth) {
           var kIn = dt ? (inn.bytesReceived - prec.rx) * 8 / dt / 1000 : 0;
           righe.push('Ricevo  ' + (inn.frameWidth || '?') + '×' + (inn.frameHeight || '?') + '  ' +
             Math.round(inn.framesPerSecond || 0) + ' fps  ' + mbps(kIn) + '  ' + nomeCodec(codecs[inn.codecId]));
           var persi = inn.packetsLost || 0, ric = inn.packetsReceived || 0;
           righe.push('Persi   ' + (ric ? (persi * 100 / (persi + ric)).toFixed(1) : '0.0') + '%   jitter ' + Math.round((inn.jitter || 0) * 1000) + ' ms');
         }
-        if (out) {
+        if (out && out.frameWidth) {
           var kOut = dt ? (out.bytesSent - prec.tx) * 8 / dt / 1000 : 0;
           righe.push('Invio   ' + (out.frameWidth || '?') + '×' + (out.frameHeight || '?') + '  ' +
             Math.round(out.framesPerSecond || 0) + ' fps  ' + mbps(kOut) + '  ' + nomeCodec(codecs[out.codecId]));
@@ -529,7 +664,7 @@
         if (coppia) {
           righe.push('Rete    ' + Math.round((coppia.currentRoundTripTime || 0) * 1000) + ' ms  ' + tipoRete(cand[coppia.localCandidateId]));
         }
-        p.prec = { t: adesso, rx: inn ? inn.bytesReceived : 0, tx: out ? out.bytesSent : 0 };
+        p.prec = { t: adesso, rx: inn ? inn.bytesReceived : 0, tx: out ? out.bytesSent : 0, rxa: innA ? innA.bytesReceived : null };
         if (p.tile) p.tile.querySelector('.tile-dati').textContent = righe.join('\n');
       }).catch(log);
     });
@@ -571,16 +706,18 @@
     squillo.attuale = v;
     if (!squilloAperto()) squillo.ritorno = document.activeElement;
     $('sq-avatar').textContent = avatarDi(v.da);
-    $('sq-titolo').textContent = nomeDi(v.da) + ' ti sta videochiamando';
+    var audio = v.tipo === 'audio';
+    $('sq-titolo').textContent = nomeDi(v.da) + (audio ? ' ti sta chiamando' : ' ti sta videochiamando');
+    $('sq-rispondi').textContent = audio ? '📞 Rispondi' : '📹 Rispondi';
     $('sq-sotto').textContent = '';
     C.gruppoRef().child('chiamate/' + v.chiamata + '/invitati').once('value').then(function (s) {
       var altri = Object.keys(s.val() || {}).filter(function (id) { return id !== io(); });
-      if (altri.length && squillo.attuale === v) $('sq-sotto').textContent = 'Videochiamata di gruppo con ' + elencoNomi(altri);
+      if (altri.length && squillo.attuale === v) $('sq-sotto').textContent = (audio ? 'Chiamata' : 'Videochiamata') + ' di gruppo con ' + elencoNomi(altri);
     }).catch(log);
     $('squillo').classList.add('aperto');
     setTimeout(function () { C.metti($('sq-rispondi')); }, 40);
     C.suona();
-    C.notificaComputer('📹 ' + nomeDi(v.da), 'ti sta videochiamando', null);
+    C.notificaComputer((audio ? '📞 ' : '📹 ') + nomeDi(v.da), audio ? 'ti sta chiamando' : 'ti sta videochiamando', null);
     clearInterval(squillo.suono);
     squillo.suono = setInterval(C.suona, 1800);
     clearTimeout(squillo.scadenza);
@@ -605,7 +742,7 @@
     chiudiSquillo();
     if (squillo.ref) squillo.ref.remove();
     stato.chiamante = false;
-    entraInChiamata(v.chiamata, 'Collegamento con ' + nomeDi(v.da) + '…');
+    entraInChiamata(v.chiamata, 'Collegamento con ' + nomeDi(v.da) + '…', v.tipo === 'audio');
   }
 
   function rifiuta() {
@@ -642,8 +779,10 @@
         '<span class="c-stato">' + C.esc(C.testoStato(x)) + '</span></button>';
     }).join('');
     var n = Object.keys(scelti).length;
-    $('gr-chiama').textContent = n ? '📹 Chiama (' + n + ')' : '📹 Chiama';
+    $('gr-chiama').textContent = n ? '📹 Video (' + n + ')' : '📹 Video';
     $('gr-chiama').disabled = !n;
+    $('gr-chiama-audio').textContent = n ? '📞 Solo voce (' + n + ')' : '📞 Solo voce';
+    $('gr-chiama-audio').disabled = !n;
     if (idFocus && C.schermata() === 's-gruppo') {
       var el = $('gr-contatti').querySelector('[data-id="' + idFocus + '"]');
       if (el && !el.disabled) el.focus({ preventScroll: true });
@@ -652,13 +791,15 @@
 
   // ================= COLLEGAMENTI =================
   function inizializza() {
-    $('btn-videochiama').onclick = function () {
+    function chiamaDallaChat(soloAudio) {
       var ch = C.chatAperta();
       if (!ch) return;
       var u = C.utenti()[ch.id];
       if (!u || !u.online) { C.toast(nomeDi(ch.id) + ' non è online: Chat TV deve essere aperta su quella TV'); return; }
-      avviaChiamata([ch.id]);
-    };
+      avviaChiamata([ch.id], soloAudio);
+    }
+    $('btn-videochiama').onclick = function () { chiamaDallaChat(false); };
+    $('btn-chiama-audio').onclick = function () { chiamaDallaChat(true); };
     $('btn-gruppo').onclick = apriGruppo;
     $('gr-indietro').onclick = function () { C.mostra('s-home', 'btn-gruppo'); };
     $('gr-contatti').addEventListener('click', function (e) {
@@ -672,7 +813,11 @@
     });
     $('gr-chiama').onclick = function () {
       var ids = Object.keys(scelti);
-      if (ids.length) avviaChiamata(ids);
+      if (ids.length) avviaChiamata(ids, false);
+    };
+    $('gr-chiama-audio').onclick = function () {
+      var ids = Object.keys(scelti);
+      if (ids.length) avviaChiamata(ids, true);
     };
     $('ch-chiudi').onclick = riaggancia;
     $('ch-mic').onclick = function () { alterna('audio'); };

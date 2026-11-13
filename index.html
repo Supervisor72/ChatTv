@@ -73,7 +73,7 @@
         </div>
       </div>
       <div class="testata-dx">
-        <button id="btn-gruppo" class="nav">📹 Videochiamata di gruppo</button>
+        <button id="btn-gruppo" class="nav">📞 Chiamata di gruppo</button>
         <button id="btn-impostazioni" class="nav">⚙️ Impostazioni</button>
       </div>
     </header>
@@ -105,7 +105,8 @@
       <button id="btn-vocale" class="nav">🎙️ Vocale</button>
       <input id="in-testo" class="nav" maxlength="300" placeholder="Premi OK per scrivere" enterkeyhint="send" autocomplete="off">
       <button id="btn-detta" class="nav">🗣️ Detta</button>
-      <button id="btn-videochiama" class="nav">📹 Videochiama</button>
+      <button id="btn-chiama-audio" class="nav">📞 Chiama</button>
+      <button id="btn-videochiama" class="nav">📹 Video</button>
       <button id="btn-invia" class="nav primario">Invia</button>
     </div>
   </section>
@@ -139,8 +140,11 @@
   <section id="s-gruppo" class="schermata">
     <header class="testata">
       <button id="gr-indietro" class="nav">← Indietro</button>
-      <h2 class="titolo-testata">Videochiamata di gruppo</h2>
-      <button id="gr-chiama" class="nav primario">📹 Chiama</button>
+      <h2 class="titolo-testata">Chiamata di gruppo</h2>
+      <div class="testata-dx">
+        <button id="gr-chiama-audio" class="nav">📞 Solo voce</button>
+        <button id="gr-chiama" class="nav primario">📹 Video</button>
+      </div>
     </header>
     <p class="sotto">Scegli fino a 3 TV. Si possono chiamare solo le TV online, cioè con Chat TV aperta.</p>
     <div id="gr-contatti" class="contatti"></div>
