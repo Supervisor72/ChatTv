@@ -181,7 +181,14 @@
     var n = ids.map(nomeDi);
     return n.length <= 1 ? (n[0] || '') : n.slice(0, -1).join(', ') + ' e ' + n[n.length - 1];
   }
-  function log(e) { if (window.console) console.warn('Chiamata:', e); }
+  var erroreMostrato = false;
+  function log(e) {
+    if (window.console) console.warn('Chiamata:', e);
+    if (inChiamata() && !erroreMostrato) {
+      erroreMostrato = true;
+      C.toast('⚠️ Errore chiamata: ' + ((e && (e.name ? e.name + ' – ' : '') + (e.message || '')) || String(e)));
+    }
+  }
   function pulito(o) { return JSON.parse(JSON.stringify(o)); } // Firebase non accetta valori undefined
   function haVideo() { return !!(stato.locale && stato.locale.getVideoTracks().length); }
   function schermoAcceso(si) { if (window.Android && Android.schermoAcceso) Android.schermoAcceso(si); }
@@ -294,6 +301,8 @@
 
   function entraInChiamata(cid, messaggio, soloAudio) {
     if (inChiamata() || !C.gruppoRef()) return;
+    erroreMostrato = false;
+    $('ch-audio').style.display = 'none';
     if (C.pannelloAperto()) C.chiudiPannello();
     stato.cid = cid;
     stato.soloAudio = !!soloAudio;
@@ -416,10 +425,19 @@
       if (v.srcObject !== flusso) {
         v.srcObject = flusso;
         if (sf) sf.srcObject = flusso;
-        var pr = v.play();
-        if (pr && pr.catch) pr.catch(function () { /* ripartirà da solo */ });
+        avviaRiproduzione(v);
       }
       if (e.track.kind === 'audio') ascoltaVoce(p.tile, new MediaStream([e.track]));
+    };
+    pc.oniceconnectionstatechange = function () {
+      var i = pc.iceConnectionState;
+      if ((i === 'connected' || i === 'completed') && pc.connectionState !== 'connected') {
+        p.tile.querySelector('.tile-stato').textContent = '';
+        stato.connesso = true;
+        clearTimeout(stato.timeout);
+        impostaStato('');
+        applicaQualita();
+      }
     };
     pc.onconnectionstatechange = function () {
       var st = pc.connectionState, el = p.tile.querySelector('.tile-stato');
@@ -508,6 +526,25 @@
       impostaStato('Chiamata terminata');
       setTimeout(function () { if (inChiamata() && !Object.keys(peers).length) riaggancia(); }, 2500);
     }
+  }
+
+  // Safari può bloccare la riproduzione con audio finché non c'è un clic: in quel caso compare un pulsante
+  function avviaRiproduzione(v) {
+    var pr = v.play();
+    if (pr && pr.catch) pr.catch(function (e) {
+      if (e && e.name === 'NotAllowedError') {
+        $('ch-audio').style.display = 'block';
+        C.metti($('ch-audio'));
+      }
+    });
+  }
+  function sbloccaRiproduzione() {
+    $('ch-audio').style.display = 'none';
+    Array.prototype.forEach.call(document.querySelectorAll('#griglia-video video'), function (v) {
+      if (v.srcObject) { var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); }
+    });
+    if (voce.ctx && voce.ctx.state === 'suspended') voce.ctx.resume();
+    C.metti($('ch-chiudi'));
   }
 
   // ================= FINE CHIAMATA =================
@@ -820,6 +857,7 @@
       if (ids.length) avviaChiamata(ids, true);
     };
     $('ch-chiudi').onclick = riaggancia;
+    $('ch-audio').onclick = sbloccaRiproduzione;
     $('ch-mic').onclick = function () { alterna('audio'); };
     $('ch-cam').onclick = function () { alterna('video'); };
     $('ch-dati').onclick = alternaDati;

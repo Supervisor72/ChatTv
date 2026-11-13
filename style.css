@@ -482,3 +482,6 @@ html.desktop .riga-scorrevole { scrollbar-width: thin; }
   .scrivi #in-testo { order: 10; flex: 1 1 60%; }
   .scrivi #btn-invia { order: 11; flex: 0 0 auto; padding-left: 1.2rem; padding-right: 1.2rem; }
 }
+
+/* 1.9.1: sblocco riproduzione su Safari */
+.ch-audio { display: none; position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); z-index: 5; font-size: 1.3rem; padding: 1rem 2rem; }
