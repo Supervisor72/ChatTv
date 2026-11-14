@@ -485,3 +485,19 @@ html.desktop .riga-scorrevole { scrollbar-width: thin; }
 
 /* 1.9.1: sblocco riproduzione su Safari */
 .ch-audio { display: none; position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); z-index: 5; font-size: 1.3rem; padding: 1rem 2rem; }
+
+/* ================= 2.2: CHAT DI GRUPPO ================= */
+.avatar-gruppo { display: flex; justify-content: center; font-size: 2.1rem; line-height: 1; padding: .2rem 0 .1rem; }
+.avatar-gruppo span {
+  width: 3.1rem; height: 3.1rem; margin-left: -.8rem;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--notte-3); border: .18rem solid var(--notte-2); border-radius: 50%;
+}
+.avatar-gruppo span:first-child { margin-left: 0; }
+.contatto.gruppo { background: linear-gradient(160deg, #2C3570, var(--notte-2)); }
+.mittente {
+  align-self: flex-start;
+  font-size: .9rem; font-weight: 800;
+  margin: .35rem 0 -.3rem .3rem;
+}
+.letto-da { align-self: flex-end; font-size: .8rem; color: var(--tenue); margin: -.2rem .3rem 0 0; }

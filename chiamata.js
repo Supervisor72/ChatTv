@@ -927,6 +927,15 @@
     function chiamaDallaChat(soloAudio) {
       var ch = C.chatAperta();
       if (!ch) return;
+      if (ch.gruppo) {
+        // chat di gruppo: chiama tutte le TV online (se sono più di 3 si scelgono)
+        var tutti = C.utenti(), me = io();
+        var on = Object.keys(tutti).filter(function (id) { return id !== me && tutti[id].online; });
+        if (!on.length) { C.toast('Nessuna TV della famiglia è online in questo momento'); return; }
+        if (on.length > MAX_PERSONE - 1) { C.toast('Scegli fino a ' + (MAX_PERSONE - 1) + ' TV da chiamare'); apriGruppo(); return; }
+        avviaChiamata(on, soloAudio);
+        return;
+      }
       var u = C.utenti()[ch.id];
       if (!u || !u.online) { C.toast(nomeDi(ch.id) + ' non è online: Chat TV deve essere aperta su quella TV'); return; }
       avviaChiamata([ch.id], soloAudio);

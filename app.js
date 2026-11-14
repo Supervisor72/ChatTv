@@ -58,6 +58,21 @@
   function idCasuale() { return 'tv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function pulisciCodice(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
   function chatIdDi(a, b) { return [a, b].sort().join('_'); }
+
+  // ---- Chat di gruppo automatica con tutte le TV del codice famiglia ----
+  var GRUPPO = 'famiglia';
+  var NOME_GRUPPO = 'Tutta la famiglia';
+  var AVATAR_GRUPPO = '🏠';
+  function cidDi(id) { return id === GRUPPO ? GRUPPO : chatIdDi(profilo.id, id); }
+  function miRiguarda(cid) { return cid === GRUPPO || cid.split('_').indexOf(profilo.id) >= 0; }
+  function membriGruppo() { return Object.keys(utenti).filter(function (id) { return id !== profilo.id; }); }
+  // un colore fisso per ogni TV, per riconoscere a colpo d'occhio chi scrive
+  var COLORI_MITTENTE = ['#FFC94A', '#5FD39A', '#7CC4FF', '#FF9E80', '#D6A2FF', '#FF8FB8', '#9BE15D', '#FFD27A'];
+  function coloreDi(id) {
+    var h = 0;
+    for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return COLORI_MITTENTE[h % COLORI_MITTENTE.length];
+  }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -493,11 +508,12 @@
     var suUltimi = refUltimi.on('value', function (s) {
       var nuovi = s.val() || {};
       Object.keys(nuovi).forEach(function (cid) {
-        if (cid.split('_').indexOf(profilo.id) >= 0) pulisciMediaVecchi(cid);
+        if (miRiguarda(cid)) pulisciMediaVecchi(cid);
       });
       controllaNuovi(nuovi);
       ultimi = nuovi;
       disegnaContatti();
+      if (chatAperta && chatAperta.gruppo) aggiornaLettoDa();
     });
 
     // chat svuotate "solo per me": si nascondono i messaggi fino a quel momento
@@ -534,14 +550,16 @@
     Object.keys(nuovi).forEach(function (cid) {
       var m = nuovi[cid];
       if (!m || m.da === profilo.id) return;
-      if (cid.split('_').indexOf(profilo.id) < 0) return;
+      if (!miRiguarda(cid)) return;
       var prima = ultimi[cid];
       if (prima && prima.ts === m.ts) return;
       if (chatAperta && chatAperta.chatId === cid && schermata === 's-chat') return;
       var u = utenti[m.da] || {};
-      toast((u.avatar || '💬') + ' ' + (u.nome || 'Nuovo messaggio') + ': ' + m.testo);
+      var gruppo = cid === GRUPPO;
+      var titolo = gruppo ? AVATAR_GRUPPO + ' ' + NOME_GRUPPO + ' · ' + (u.nome || 'TV') : (u.avatar || '💬') + ' ' + (u.nome || 'Chat TV');
+      toast(titolo + ': ' + m.testo);
       suona();
-      notificaComputer((u.avatar || '💬') + ' ' + (u.nome || 'Chat TV'), m.testo, m.da);
+      notificaComputer(titolo, m.testo, gruppo ? GRUPPO : m.da);
     });
   }
 
@@ -577,6 +595,8 @@
         '</button>';
     }).join('');
 
+    if (ids.length >= 2) box.insertAdjacentHTML('afterbegin', riquadroGruppo(ids));
+
     $('contatti-vuoto').style.display = ids.length ? 'none' : 'block';
 
     if (idFocus) {
@@ -585,12 +605,35 @@
     }
   }
 
+  function riquadroGruppo(ids) {
+    var ul = ultimi[GRUPPO];
+    if (ul && svuotate[GRUPPO] && ul.ts <= svuotate[GRUPPO]) ul = null;
+    var nuovo = ul && ul.da !== profilo.id && (!letti[GRUPPO] || letti[GRUPPO] < ul.ts);
+    var anteprima = ul ? (ul.da === profilo.id ? 'Tu' : ((utenti[ul.da] || {}).nome || 'TV')) + ': ' + ul.testo : 'Nessun messaggio';
+    var online = ids.filter(function (id) { return utenti[id].online; }).length;
+    var facce = [profilo.id].concat(ids).slice(0, 4).map(function (id) {
+      return '<span>' + esc(id === profilo.id ? profilo.avatar : (utenti[id].avatar || '📺')) + '</span>';
+    }).join('');
+    return '<button class="nav contatto gruppo' + (online ? ' online' : '') + '" data-id="' + GRUPPO + '">' +
+      '<span class="avatar-gruppo">' + facce + '</span>' +
+      '<span class="c-nome">' + esc(NOME_GRUPPO) + '</span>' +
+      '<span class="c-stato">' + (ids.length + 1) + ' TV' + (online ? ' · ' + online + ' online' : '') + '</span>' +
+      '<span class="c-anteprima">' + esc(anteprima) + '</span>' +
+      (nuovo ? '<span class="badge">Nuovo</span>' : '') +
+      '</button>';
+  }
+
   // =============== CHAT ===============
 
+  var ultimoMittente = null; // per non ripetere il nome a ogni messaggio della stessa persona
+  var refLettiGruppo = null;
+
   function apriChat(id) {
-    var cid = chatIdDi(profilo.id, id);
-    chatAperta = { id: id, chatId: cid };
+    var cid = cidDi(id);
+    chatAperta = { id: id, chatId: cid, gruppo: id === GRUPPO };
     ultimoGiorno = null;
+    ultimoMittente = null;
+    if (chatAperta.gruppo) ascoltaLettiGruppo();
     $('messaggi').innerHTML = messaggioChatVuota();
     $('in-testo').value = '';
     aggiornaTestataChat();
@@ -615,10 +658,14 @@
     var box = $('messaggi');
     var b = box.querySelector('[data-key="' + key + '"]');
     if (b) b.remove();
+    var etich = box.querySelector('[data-mitt="' + key + '"]');
+    if (etich) etich.remove();
     if (!box.querySelector('.msg')) {
       box.innerHTML = messaggioChatVuota();
       ultimoGiorno = null;
+      ultimoMittente = null;
     }
+    aggiornaLettoDa();
   }
 
   function ricaricaChat() {
@@ -626,6 +673,7 @@
     var id = chatAperta.id;
     fermaVocale();
     if (refMessaggi) { refMessaggi.off(); refMessaggi = null; }
+    fermaLettiGruppo();
     chatAperta = null;
     apriChat(id);
   }
@@ -634,20 +682,25 @@
   function apriSvuota() {
     if (!chatAperta) return;
     var nome = nomeInterlocutore();
-    apriPannello('svuota', '🗑️ Svuota la chat con ' + nome);
-    statoPan('Solo per me: i messaggi spariscono da questa TV. Per entrambi: messaggi, foto e vocali vengono cancellati anche per ' + nome + '.');
+    var gr = chatAperta.gruppo;
+    apriPannello('svuota', gr ? '🗑️ Svuota la chat ' + NOME_GRUPPO : '🗑️ Svuota la chat con ' + nome);
+    statoPan(gr
+      ? 'Solo per me: i messaggi spariscono da questa TV. Per tutti: messaggi, foto e vocali vengono cancellati su tutte le TV.'
+      : 'Solo per me: i messaggi spariscono da questa TV. Per entrambi: messaggi, foto e vocali vengono cancellati anche per ' + nome + '.');
     azioni([
       { testo: '🙈 Solo per me', primario: true, fai: svuotaPerMe },
-      { testo: '🗑️ Per entrambi', fai: confermaPerEntrambi },
+      { testo: gr ? '🗑️ Per tutti' : '🗑️ Per entrambi', fai: confermaPerEntrambi },
       { testo: 'Annulla', fai: chiudiPannello }
     ]);
   }
 
   function confermaPerEntrambi() {
-    statoPan('Sicuro? La chat verrà cancellata anche per ' + nomeInterlocutore() + '. Non si può annullare.');
+    var gr = chatAperta && chatAperta.gruppo;
+    statoPan(gr ? 'Sicuro? La chat verrà cancellata su tutte le TV. Non si può annullare.'
+      : 'Sicuro? La chat verrà cancellata anche per ' + nomeInterlocutore() + '. Non si può annullare.');
     azioni([
       { testo: 'Annulla', fai: chiudiPannello },
-      { testo: 'Sì, cancella per entrambi', fai: svuotaPerEntrambi }
+      { testo: gr ? 'Sì, cancella per tutti' : 'Sì, cancella per entrambi', fai: svuotaPerEntrambi }
     ]);
   }
 
@@ -669,7 +722,7 @@
     canc['media/' + cid] = null;
     canc['ultimi/' + cid] = null;
     gruppoRef.update(canc).then(function () {
-      toast('Chat svuotata per entrambi');
+      toast(cid === GRUPPO ? 'Chat svuotata per tutti' : 'Chat svuotata per entrambi');
     }).catch(function (e) {
       toast('Cancellazione non riuscita: ' + (e && e.message ? e.message : e));
     });
@@ -680,12 +733,21 @@
     var id = chatAperta ? chatAperta.id : null;
     fermaVocale();
     if (refMessaggi) { refMessaggi.off(); refMessaggi = null; }
+    fermaLettiGruppo();
     chatAperta = null;
     mostra('s-home', id ? $('contatti').querySelector('[data-id="' + id + '"]') : null);
   }
 
   function aggiornaTestataChat() {
     if (!chatAperta) return;
+    if (chatAperta.gruppo) {
+      var membri = membriGruppo();
+      var on = membri.filter(function (id) { return utenti[id].online; }).map(function (id) { return utenti[id].nome || 'TV'; });
+      $('chat-avatar').textContent = AVATAR_GRUPPO;
+      $('chat-nome').textContent = NOME_GRUPPO;
+      $('chat-stato').textContent = on.length ? 'Online: ' + on.join(', ') : (membri.length + 1) + ' TV, nessuna online';
+      return;
+    }
     var u = utenti[chatAperta.id] || {};
     $('chat-avatar').textContent = u.avatar || '📺';
     $('chat-nome').textContent = u.nome || 'TV';
@@ -714,13 +776,29 @@
     var giorno = etichettaGiorno(ts);
     if (giorno !== ultimoGiorno) {
       ultimoGiorno = giorno;
+      ultimoMittente = null;
       var sep = document.createElement('div');
       sep.className = 'giorno';
       sep.textContent = giorno;
       box.appendChild(sep);
     }
+    if (chatAperta.gruppo && m.da !== profilo.id) {
+      var stesso = ultimoMittente && ultimoMittente.da === m.da && ts - ultimoMittente.ts < 5 * 60000;
+      if (!stesso) {
+        var mu = utenti[m.da] || {};
+        var et = document.createElement('div');
+        et.className = 'mittente';
+        et.style.color = coloreDi(m.da);
+        et.textContent = (mu.avatar || '📺') + ' ' + (mu.nome || 'TV');
+        if (key) et.setAttribute('data-mitt', key);
+        box.appendChild(et);
+      }
+    }
+    ultimoMittente = { da: m.da, ts: ts };
+
     var div = document.createElement('div');
     div.className = 'msg ' + (m.da === profilo.id ? 'mio' : 'altro');
+    if (chatAperta.gruppo && m.da !== profilo.id) div.style.borderLeft = '.3rem solid ' + coloreDi(m.da);
     if (key) div.setAttribute('data-key', key);
 
     if (tipo === 'foto') {
@@ -757,7 +835,47 @@
     o.textContent = ora(ts);
     div.appendChild(o);
     box.appendChild(div);
+    aggiornaLettoDa();
     seguiFondo();
+  }
+
+  // ---- "Letto da …" sotto il mio ultimo messaggio nel gruppo ----
+  var lettiGruppo = {};
+  function ascoltaLettiGruppo() {
+    fermaLettiGruppo();
+    refLettiGruppo = gruppoRef.child('letti');
+    refLettiGruppo.on('value', function (s) {
+      var tutti = s.val() || {};
+      lettiGruppo = {};
+      Object.keys(tutti).forEach(function (id) {
+        if (id !== profilo.id && tutti[id] && tutti[id][GRUPPO]) lettiGruppo[id] = tutti[id][GRUPPO];
+      });
+      aggiornaLettoDa();
+    });
+  }
+  function fermaLettiGruppo() {
+    if (refLettiGruppo) { refLettiGruppo.off(); refLettiGruppo = null; }
+    lettiGruppo = {};
+  }
+  function aggiornaLettoDa() {
+    var box = $('messaggi');
+    var vecchio = $('letto-da');
+    if (vecchio) vecchio.remove();
+    if (!chatAperta || !chatAperta.gruppo) return;
+    var bolle = box.querySelectorAll('.msg');
+    var ultima = bolle[bolle.length - 1];
+    if (!ultima || !ultima.classList.contains('mio')) return;
+    var ul = ultimi[GRUPPO];
+    var ts = ul && ul.da === profilo.id ? ul.ts : 0;
+    if (!ts) return;
+    var chi = Object.keys(lettiGruppo).filter(function (id) { return lettiGruppo[id] >= ts && utenti[id]; })
+      .map(function (id) { return utenti[id].nome || 'TV'; });
+    if (!chi.length) return;
+    var el = document.createElement('div');
+    el.id = 'letto-da';
+    el.className = 'letto-da';
+    el.textContent = (chi.length === membriGruppo().length ? '✓✓ Letto da tutti' : '✓✓ Letto da ' + chi.join(', '));
+    box.appendChild(el);
   }
 
   function segnaLetto() {
@@ -801,6 +919,7 @@
   }
 
   function nomeInterlocutore() {
+    if (chatAperta && chatAperta.gruppo) return NOME_GRUPPO;
     return chatAperta ? ((utenti[chatAperta.id] || {}).nome || 'TV') : '';
   }
 
@@ -1222,12 +1341,13 @@
   window.tvApriChat = function (id) {
     if (!id || !profilo || !gruppoRef) { chatInSospeso = id; return; }
     if (schermata === 's-chiamata' || schermata === 's-setup') return; // non interrompe chiamate o configurazione
-    if (!utenti[id]) { chatInSospeso = id; return; } // contatti non ancora caricati: si apre appena arrivano
+    if (id !== GRUPPO && !utenti[id]) { chatInSospeso = id; return; } // contatti non ancora caricati: si apre appena arrivano
     if (pannelloAperto()) chiudiPannello();
     if (chatAperta && chatAperta.id === id && schermata === 's-chat') return;
     if (chatAperta) {
       fermaVocale();
       if (refMessaggi) { refMessaggi.off(); refMessaggi = null; }
+      fermaLettiGruppo();
       chatAperta = null;
     }
     apriChat(id);
@@ -1256,6 +1376,7 @@
     TS: function () { return TS; },
     schermata: function () { return schermata; },
     testoStato: testoStato,
+    GRUPPO: GRUPPO,
     notificaComputer: notificaComputer
   };
 
